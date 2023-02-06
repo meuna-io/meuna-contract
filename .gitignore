@@ -1,0 +1,11 @@
+node_modules
+truffle-config.js
+yarn.lock
+build
+migrations
+artifacts
+cache
+contracts_
+old
+test_
+truffle-config.js
