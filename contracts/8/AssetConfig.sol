@@ -28,8 +28,16 @@ contract AssetConfig is Ownable {
         }
     }
 
+    function getAccepAsset(address asset) external view returns(bool) {
+        return assets[asset].acceptAsset;
+    }
+
     function getMinCollateralRatio(address asset) external view returns (uint256) {
         return assets[asset].minCollateralRatio;
+    }
+
+    function getAuction(address asset) external view returns (uint256) {
+        return assets[asset].auctionDiscount;
     }
 
    
