@@ -9,10 +9,7 @@ import "./libraries/Math.sol";
 import './Interfaces/IPriceOracle.sol';
 import './Interfaces/IAssetConfig.sol';
 import './Interfaces/ICollateralConfig.sol';
-import './Interfaces/ILock.sol';
-import './Interfaces/IPancakeRouter02.sol';
-import './Interfaces/IPancakeFactory.sol';
-import './Interfaces/IPancakePair.sol';
+import './Interfaces/IShort.sol';
 import './mocks/ERC20Mock.sol';
 
 contract MintSyn is Ownable {
@@ -24,6 +21,7 @@ contract MintSyn is Ownable {
     IPriceOracle public twap;
     IAssetConfig public assetConfig;
     ICollateralConfig public collateralConfig;
+    IShort public shortContract;
 
     struct Position {
         address asset;
@@ -32,6 +30,7 @@ contract MintSyn is Ownable {
         uint256 collateralAmount;
         uint256 mintAmount;
         bool closePosition;
+        bool short;
     }
 
     mapping (address => uint256) public countPosition;
@@ -52,6 +51,15 @@ contract MintSyn is Ownable {
         (uint256 colleteralPrice,)= twap.getPrice(c);
         (uint256 assetPrice, ) = twap.getPrice(a);
         return assetPrice.mul(1e18).div(colleteralPrice);
+    }
+
+    function calculateFee(uint256 burnAmount,address collateral,uint256 collateralPriceInAsset,uint256 returnCollateralAmount) internal returns(uint256) {
+        uint256 fee = burnAmount.mul(collateralPriceInAsset).mul(feeRate).div(1e22);
+        if (fee > 0){
+            IERC20(collateral).transfer(collector,fee);
+            returnCollateralAmount = returnCollateralAmount.sub(fee);
+        }
+        return returnCollateralAmount;
     }
 
     function removePosition(address user,uint256 positionId) internal {
@@ -81,7 +89,7 @@ contract MintSyn is Ownable {
         return (values, cursor + length);
     }   
     
-    function getHealth(uint256 positionId) public view returns(uint256 assetValueInCollateral,uint256 colleteralAmount,uint256 minRatio) {
+    function getHealth(uint256 positionId) public view returns(uint256 assetValueInCollateral,uint256 colleteralAmount,uint256 minRatio,uint256 multipier) {
         Position memory pos = positions[positionId];
         (uint256 colleteralPrice,)= twap.getPrice(pos.collateral);
         (uint256 assetPrice,) = twap.getPrice(pos.asset);
@@ -89,9 +97,10 @@ contract MintSyn is Ownable {
         assetValueInCollateral = (pos.mintAmount.mul(collateralPriceInAsset)).div(1e18);
         colleteralAmount = pos.collateralAmount;
         minRatio = assetConfig.getMinCollateralRatio(pos.asset);
+        multipier = collateralConfig.getMultipier(pos.collateral);
     }
     
-    function openPosition(uint256 amount, address asset,address collateral, uint256 collateralRatio) external
+    function openPosition(uint256 amount, address asset,address collateral, uint256 collateralRatio,bool short) external
     {   
         require(amount > 0,"Wrong Amount");
         require(assetConfig.getAccepAsset(asset),"this asset not allowed");
@@ -110,7 +119,14 @@ contract MintSyn is Ownable {
         positions[nextPositionID].owner = msg.sender;
         positions[nextPositionID].collateralAmount = amount;
         positions[nextPositionID].mintAmount = mintAmount; 
-        ERC20Mock(asset).mint(msg.sender,mintAmount);
+        if(short == true){
+            positions[nextPositionID].short = true;
+            ERC20Mock(asset).mint(address(shortContract),mintAmount);
+            shortContract.openShort(nextPositionID,asset,collateral,mintAmount,msg.sender);
+        }
+        else {
+            ERC20Mock(asset).mint(msg.sender,mintAmount);
+        }
         userPositions[msg.sender].push(nextPositionID);
         countPosition[msg.sender] = countPosition[msg.sender] + 1;
         mapIndex[nextPositionID] = countPosition[msg.sender] - 1;
@@ -119,12 +135,7 @@ contract MintSyn is Ownable {
 
     function closePosition(uint256 positionId) external {
         burnAsset(positionId,positions[positionId].mintAmount);
-         console.log(
-        "Transferring from %s to %s %s tokens",
-        positions[positionId].collateralAmount
-    );
         withdraw(positionId,positions[positionId].collateralAmount);
-        
     }
 
     function deposit(uint256 positionId,uint256 amount) public {
@@ -153,6 +164,9 @@ contract MintSyn is Ownable {
         pos.collateralAmount = collateralAmountAfterSub;
         IERC20(pos.collateral).transfer(msg.sender, withdrawAmount);
         if(pos.collateralAmount == 0 && pos.mintAmount ==0){
+            if(pos.short){
+                shortContract.unlock(positionId);
+            }
             pos.closePosition = true;
             removePosition(msg.sender,positionId);
         }
@@ -174,7 +188,13 @@ contract MintSyn is Ownable {
             revert("Cannot mint asset over than min collateral ratio");
         }
         pos.mintAmount = newAssetAmount;
-        ERC20Mock(pos.asset).mint(msg.sender,mintAmount);
+        if(pos.short){
+            ERC20Mock(pos.asset).mint(address(shortContract),mintAmount);
+            shortContract.openShort(nextPositionID,pos.asset,pos.collateral,mintAmount,pos.owner);
+        }
+        else{
+            ERC20Mock(pos.asset).mint(msg.sender,mintAmount);
+        }
     }
 
     function burnAsset(uint256 positionId,uint256 burnAmount) public {
@@ -193,6 +213,9 @@ contract MintSyn is Ownable {
         }
         ERC20Mock(pos.asset).transferFrom(msg.sender,address(this),burnAmount);
         ERC20Mock(pos.asset).burn(burnAmount);
+        if(pos.short){
+            shortContract.decreaseShortToken(pos.asset,burnAmount,pos.owner);
+        }
     }
 
     function auction(uint256 positionId,uint256 burnAmount)  public {
@@ -240,12 +263,11 @@ contract MintSyn is Ownable {
             pos.mintAmount = leftAssetAmount;
         }
         ERC20Mock(pos.asset).burn(liquidatedAmount);
-        uint256 fee = liquidatedAmount.mul(collateralPriceInAsset).mul(feeRate).div(1e22);
-        if (fee > 0){
-            IERC20(pos.collateral).transfer(collector,fee);
-            returnCollateralAmount = returnCollateralAmount.sub(fee);
-        }
+        returnCollateralAmount =  calculateFee(liquidatedAmount,pos.collateral,collateralPriceInAsset,returnCollateralAmount);
         IERC20(pos.collateral).transfer(msg.sender, returnCollateralAmount);
+        if(pos.short){
+            shortContract.afterAuction(positionId,pos.asset,liquidatedAmount,pos.owner);
+        }
     }
 
     function setAssetConfig(address _config) external onlyOwner {
@@ -262,6 +284,10 @@ contract MintSyn is Ownable {
 
     function setFee(uint256 _fee) external onlyOwner {
         feeRate = _fee;
+    }
+
+    function setShortContract(IShort _shortContract) external onlyOwner {
+        shortContract = _shortContract;
     }
 
 }
