@@ -3,9 +3,12 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract StakingContract is Ownable {
+contract StakingContractUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgradeable,PausableUpgradeable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -30,7 +33,7 @@ contract StakingContract is Ownable {
     }
 
     /// @notice Address of Meuna contract.
-    IERC20 public immutable Meuna;
+    IERC20 public Meuna;
     address public shortContract;
 
     /// @notice Info of each MCV2 pool.
@@ -59,7 +62,10 @@ contract StakingContract is Ownable {
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed token, bool types);
 
     /// @param _Meuna The Meuna token contract address.
-    constructor(IERC20 _Meuna,uint256 _startTime) {
+    function initialize(IERC20 _Meuna,uint256 _startTime) public initializer {
+        OwnableUpgradeable.__Ownable_init();
+        ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
+        PausableUpgradeable.__Pausable_init();
         Meuna = _Meuna;
         startTime = _startTime;
     }
@@ -169,7 +175,7 @@ contract StakingContract is Ownable {
         }
     }
 
-    function deposit(uint256 pid, uint256 amount) public {
+    function deposit(uint256 pid, uint256 amount) public whenNotPaused nonReentrant{
         updatePool(pid);
         PoolInfo storage pool = poolInfo[pid];
         require(!pool.short,"short token");
@@ -191,7 +197,7 @@ contract StakingContract is Ownable {
         emit Deposit(msg.sender, pid, amount);
     }
 
-    function withdraw(uint256 pid, uint256 amount) public {
+    function withdraw(uint256 pid, uint256 amount) public nonReentrant {
         updatePool(pid);
         PoolInfo storage pool = poolInfo[pid];
         require(!pool.short,"short token");
@@ -257,7 +263,7 @@ contract StakingContract is Ownable {
     }
 
 
-    function harvest(uint256 pid) public {
+    function harvest(uint256 pid) public whenNotPaused nonReentrant {
         updatePool(pid);
         PoolInfo storage pool = poolInfo[pid];
         UserInfo storage user = userInfo[pid][msg.sender];
@@ -300,6 +306,13 @@ contract StakingContract is Ownable {
         shortContract = _shortContract;
     }
 
+    function pause() external onlyOwner whenNotPaused {
+        _pause();
+    }
+
+    function unpause() external onlyOwner whenPaused {
+        _unpause();
+    }
 
 
 }

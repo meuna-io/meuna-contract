@@ -3,14 +3,14 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import '@openzeppelin/contracts/access/Ownable.sol';
-import '@openzeppelin/contracts/security/Pausable.sol';
+import '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import './Interfaces/ILock.sol';
 import './Interfaces/IPancakeRouter02.sol';
 import './Interfaces/IPancakeFactory.sol';
 import './Interfaces/IStaking.sol';
 
-contract ShortContract is Ownable {
+contract ShortContractUpgrade is  Initializable,OwnableUpgradeable {
     /// @notice Libraries
     using SafeMath for uint256;
     IPancakeFactory public factory;
@@ -20,7 +20,8 @@ contract ShortContract is Ownable {
     address public mintContract;
     mapping (address => uint256) public assetPools;
 
-    constructor(IPancakeFactory _factory,IPancakeRouter02 _router,ILock _locker,IStaking _staking) {
+    function initialize(IPancakeFactory _factory,IPancakeRouter02 _router,ILock _locker,IStaking _staking) public initializer {
+        OwnableUpgradeable.__Ownable_init();
         factory = _factory;
         router = _router;
         locker = _locker;
@@ -35,7 +36,6 @@ contract ShortContract is Ownable {
         IERC20(asset).approve(address(router), amount);
         router.swapExactTokensForTokens(amount, 0,path, address(locker), block.timestamp);
     }
-
 
     function openShort(uint256 positionId,address asset,address colleteral,uint256 amount,address user) public onlyMintContract
     {
@@ -77,9 +77,9 @@ contract ShortContract is Ownable {
         return msg.sender == mintContract;
     }
 
-    function setShortContract(address _mintContract) external onlyOwner {
+    function setMintContract(address _mintContract) external onlyOwner {
         mintContract = _mintContract;
     }
 
-
 }
+
