@@ -62,6 +62,11 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         nextPositionID = 1;
     }
 
+    modifier onlyEOA() {
+        require(msg.sender == tx.origin, "not eoa");
+        _;
+    }
+
     function collateralPriceInA(address c,address a) view internal returns(uint256) {
         (uint256 colleteralPrice,)= twap.getPrice(c);
         (uint256 assetPrice, ) = twap.getPrice(a);
@@ -116,7 +121,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         multipier = collateralConfig.getMultipier(pos.collateral);
     }
     
-    function openPosition(uint256 amount, address asset,address collateral, uint256 collateralRatio,bool short) external whenNotPaused nonReentrant
+    function openPosition(uint256 amount, address asset,address collateral, uint256 collateralRatio,bool short) external onlyEOA whenNotPaused nonReentrant
     {   
         require(amount > 0,"Wrong Amount");
         require(assetConfig.getAccepAsset(asset),"this asset not allowed");
@@ -155,7 +160,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         withdraw(positionId,positions[positionId].collateralAmount);
     }
 
-    function deposit(uint256 positionId,uint256 amount) public whenNotPaused nonReentrant {
+    function deposit(uint256 positionId,uint256 amount) public onlyEOA whenNotPaused nonReentrant {
         Position storage pos = positions[positionId];
         require(!pos.closePosition,"position was closed");
         require(msg.sender == pos.owner ,"not owner");
@@ -164,7 +169,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         emit Deposit(pos.owner,positionId,amount);
     }
 
-    function withdraw(uint256 positionId,uint256 withdrawAmount) public nonReentrant {
+    function withdraw(uint256 positionId,uint256 withdrawAmount) public onlyEOA nonReentrant {
         Position storage pos = positions[positionId];
         require(!pos.closePosition,"position was closed");
         require(msg.sender == pos.owner ,"not owner");
@@ -192,7 +197,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         }
     }
 
-    function mintAsset(uint256 positionId,uint256 mintAmount) public whenNotPaused nonReentrant {
+    function mintAsset(uint256 positionId,uint256 mintAmount) public onlyEOA whenNotPaused nonReentrant {
         Position storage pos = positions[positionId];
         require(!pos.closePosition,"position was closed");
         require(msg.sender == pos.owner ,"not owner");
@@ -218,7 +223,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         }
     }
 
-    function burnAsset(uint256 positionId,uint256 burnAmount) public nonReentrant{
+    function burnAsset(uint256 positionId,uint256 burnAmount) public onlyEOA nonReentrant{
         Position storage pos = positions[positionId];
         require(!pos.closePosition,"position was closed");
         require(msg.sender == pos.owner ,"not owner");
@@ -241,7 +246,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         }
     }
 
-    function auction(uint256 positionId,uint256 burnAmount) public whenNotPaused nonReentrant{
+    function auction(uint256 positionId,uint256 burnAmount) public onlyEOA whenNotPaused nonReentrant{
         Position storage pos = positions[positionId];
         require(pos.mintAmount >= burnAmount ,"Cannot liquidate more than the position amount");
         uint256 collateralPriceInAsset = collateralPriceInA(pos.collateral,pos.asset); 
