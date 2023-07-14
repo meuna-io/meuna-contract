@@ -10,7 +10,10 @@
     "compile5": "hardhat compile --config hardhat.config.5.js",
     "compile6": "hardhat compile --config hardhat.config.6.js",
     "deploy:test": "hardhat run scripts/sample-scripts.js --network testnet",
-    "deploy:test:asset": "hardhat run scripts/deploy-asset-addsetter.js --network testnet"
+    "deploy:test:asset": "hardhat run scripts/deploy-asset-addsetter.js --network testnet",
+    "deploy:opbnbtest": "hardhat run scripts/sample-scripts.js --network opbnbtestnet",
+    "deploy:opbnbtest:asset": "hardhat run scripts/deploy-asset-addsetter.js --network opbnbtestnet",
+    "deploy:opbnbtest:addli": "hardhat run scripts/deploy-add-liquid.js --network opbnbtestnet"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.8.0",

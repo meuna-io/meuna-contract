@@ -19,7 +19,11 @@ module.exports = {
     testnet: {
       url: "https://data-seed-prebsc-1-s1.binance.org:8545",
       accounts: [process.env.BSC_TESTNET_PRIVATE_KEY],
-    }
+    }, 
+    opbnbtestnet: {
+      url: "https://opbnb-testnet-rpc.bnbchain.org",
+      accounts: [process.env.BSC_TESTNET_PRIVATE_KEY],
+    },
   },
   solidity: {
     version: "0.8.9",
