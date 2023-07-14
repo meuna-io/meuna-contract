@@ -34,11 +34,12 @@ contract ShortContractUpgrade is  Initializable,OwnableUpgradeable {
         path[1] = colleteral;
         IERC20(asset).approve(address(router), 0);
         IERC20(asset).approve(address(router), amount);
-        router.swapExactTokensForTokens(amount, 0,path, address(locker), block.timestamp);
+        router.swapExactTokensForTokens(amount,0,path, address(locker), block.timestamp);
     }
 
     function openShort(uint256 positionId,address asset,address colleteral,uint256 amount,address user) public onlyMintContract
     {
+        require(assetPools[asset] > 0,"this asset not allow to short");
         swap(asset,colleteral,amount);
         locker.lockPosition(positionId,user);
         staking.increaseShort(assetPools[asset], amount, user);
@@ -46,17 +47,20 @@ contract ShortContractUpgrade is  Initializable,OwnableUpgradeable {
 
     function increaseShort(uint256 positionId,address asset,address colleteral,uint256 amount,address user) public onlyMintContract
     {
+        require(assetPools[asset] > 0,"this asset not allow to short");
         swap(asset,colleteral,amount);
         locker.increaseLock(positionId,user);
         staking.increaseShort(assetPools[asset], amount, user);
     }
 
     function afterAuction(uint256 positionId,address asset,uint256 amount,address user) public onlyMintContract{
+        require(assetPools[asset] > 0,"this asset not allow to short");
         staking.decreaseShort(assetPools[asset], amount, user);
         locker.releasePosition(positionId);
     }
 
     function decreaseShortToken(address asset,uint256 amount,address user) public onlyMintContract{
+        require(assetPools[asset] > 0,"this asset not allow to short");
         staking.decreaseShort(assetPools[asset], amount, user);
     }
 
