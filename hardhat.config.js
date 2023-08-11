@@ -24,6 +24,10 @@ module.exports = {
       url: "https://opbnb-testnet-rpc.bnbchain.org",
       accounts: [process.env.BSC_TESTNET_PRIVATE_KEY],
     },
+    abtestnet: {
+      url: "https://goerli-rollup.arbitrum.io/rpc",
+      accounts:[process.env.BSC_TESTNET_PRIVATE_KEY]
+    }
   },
   solidity: {
     version: "0.8.9",
