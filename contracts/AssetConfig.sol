@@ -2,6 +2,7 @@
 pragma solidity ^0.8.9;
 
 import '@openzeppelin/contracts/access/Ownable.sol';
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract AssetConfig is Ownable {
 
@@ -19,6 +20,7 @@ contract AssetConfig is Ownable {
         uint256 len = addrs.length;
         require(configs.length == len, "bad len");
         for (uint256 idx = 0; idx < len; idx++) {
+            require(ERC20(addrs[idx]).decimals() == 18,"decimals not 18");
             assets[addrs[idx]] = Config({
                 assetName: configs[idx].assetName,
                 auctionDiscount: configs[idx].auctionDiscount,

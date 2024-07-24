@@ -54,12 +54,12 @@ contract StakingContractUpgrade is Initializable,ReentrancyGuardUpgradeable,Owna
     event IncreaseShort(address indexed shortContract,address indexed user,uint256 indexed pid,uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event DecreaseShort(address indexed shortContract,address indexed user,uint256 indexed pid,uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount, address indexed to);
     event Harvest(address indexed user, uint256 indexed pid, uint256 amount);
     event LogUpdatePool(uint256 indexed pid, uint256 lastRewardTime, uint256 lpSupply, uint256 accMeunaPerShare);
     event LogMeunaPerSecond(uint256 MeunaPerSecond);
     event LogSetPool(uint256 indexed pid, uint256 allocPoint);
     event LogPoolAddition(uint256 indexed pid, uint256 allocPoint, IERC20 indexed token, bool types);
+    event EmergencyWithdraw(address indexed user,uint256 indexed pid,uint256 amount);
 
     /// @param _Meuna The Meuna token contract address.
     function initialize(IERC20 _Meuna,uint256 _startTime) public initializer {
@@ -115,6 +115,7 @@ contract StakingContractUpgrade is Initializable,ReentrancyGuardUpgradeable,Owna
     }
 
     function add(IERC20 _token,uint256 _allocPoint,bool _shorts) public onlyOwner {
+        require(address(_token) != address(Meuna),"reward token");
         uint256 lastRewardTime = block.timestamp > startTime ? block.timestamp : startTime;
         totalAllocPoint = totalAllocPoint.add(_allocPoint);
         poolInfo.push(
@@ -277,6 +278,17 @@ contract StakingContractUpgrade is Initializable,ReentrancyGuardUpgradeable,Owna
         }
         
         emit Harvest(msg.sender, pid, pending);
+    }
+
+    function emergencyWithdraw(uint256 pid) public {
+        PoolInfo storage pool = poolInfo[pid];
+        require(!pool.short,"short token");
+        UserInfo storage user = userInfo[pid][msg.sender];
+        pool.totalAmount = pool.totalAmount.sub(user.amount);
+        pool.token.safeTransfer(msg.sender, user.amount);
+        emit EmergencyWithdraw(msg.sender, pid, user.amount);
+        user.amount = 0;
+        user.rewardDebt = 0;
     }
 
     function safeMeunaTransfer(address _to, uint256 _MeunaAmt) internal {

@@ -121,12 +121,15 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         multipier = collateralConfig.getMultipier(pos.collateral);
     }
     
-    function openPosition(uint256 amount, address asset,address collateral, uint256 collateralRatio,bool short) external onlyEOA whenNotPaused nonReentrant
+    function openPosition(uint256 amount, address asset,address collateral, uint256 collateralRatio,bool short,uint256 minAmountOut) external onlyEOA whenNotPaused nonReentrant
     {   
         require(amount > 0,"Wrong Amount");
         require(assetConfig.getAccepAsset(asset),"this asset not allowed");
         require(collateralConfig.getAccepCollateral(collateral),"this collateral not allowed");
-        require(assetConfig.getMinCollateralRatio(asset).mul(collateralConfig.getMultipier(collateral)).div(1e5) <= collateralRatio,"low collateral ratio than minimum");
+        if(collateralRatio < assetConfig.getMinCollateralRatio(asset).mul(collateralConfig.getMultipier(collateral)).div(1e5)){
+            revert("low collateral ratio than minimum");
+        }
+        // require(assetConfig.getMinCollateralRatio(asset).mul(collateralConfig.getMultipier(collateral)).div(1e5) <= collateralRatio,"low collateral ratio than minimum");
         IERC20(collateral).transferFrom(msg.sender, address(this), amount);
         (uint256 colleteralPrice,)= twap.getPrice(collateral);
         (uint256 assetPrice, ) = twap.getPrice(asset);
@@ -143,7 +146,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         if(short == true){
             positions[nextPositionID].short = true;
             MeunaAsset(asset).mint(address(shortContract),mintAmount);
-            shortContract.openShort(nextPositionID,asset,collateral,mintAmount,msg.sender);
+            shortContract.openShort(nextPositionID,asset,mintAmount,msg.sender,minAmountOut);
         }
         else {
             MeunaAsset(asset).mint(msg.sender,mintAmount);
@@ -197,7 +200,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         }
     }
 
-    function mintAsset(uint256 positionId,uint256 mintAmount) public onlyEOA whenNotPaused nonReentrant {
+    function mintAsset(uint256 positionId,uint256 mintAmount,uint256 minAmountOut) public onlyEOA whenNotPaused nonReentrant {
         Position storage pos = positions[positionId];
         require(!pos.closePosition,"position was closed");
         require(msg.sender == pos.owner ,"not owner");
@@ -216,7 +219,7 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
         emit Mint(pos.owner,positionId,mintAmount);
         if(pos.short){
             MeunaAsset(pos.asset).mint(address(shortContract),mintAmount);
-            shortContract.increaseShort(positionId,pos.asset,pos.collateral,mintAmount,pos.owner);
+            shortContract.increaseShort(positionId,pos.asset,mintAmount,pos.owner,minAmountOut);
         }
         else{
             MeunaAsset(pos.asset).mint(msg.sender,mintAmount);
@@ -248,10 +251,11 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
 
     function auction(uint256 positionId,uint256 burnAmount) public onlyEOA whenNotPaused nonReentrant{
         Position storage pos = positions[positionId];
+        require(!pos.closePosition,"position was closed");
         require(pos.mintAmount >= burnAmount ,"Cannot liquidate more than the position amount");
         uint256 collateralPriceInAsset = collateralPriceInA(pos.collateral,pos.asset); 
         uint256 assetValueInCollateral = (pos.mintAmount.mul(collateralPriceInAsset)).div(1e18);
-        if(assetValueInCollateral.mul(collateralConfig.getMultipier(pos.collateral)).mul(assetConfig.getMinCollateralRatio(pos.asset)).div(1e25) <  pos.collateralAmount){
+        if(assetValueInCollateral.mul(collateralConfig.getMultipier(pos.collateral)).mul(assetConfig.getMinCollateralRatio(pos.asset)).div(1e25) <=  pos.collateralAmount){
             revert("Cannot liquidate a safely collateralized position");
         }
         IERC20(pos.asset).transferFrom(msg.sender, address(this), burnAmount);
@@ -271,10 +275,12 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
             refundAssetAmount = 0;
         }
         uint256 liquidatedAmount = burnAmount.sub(refundAssetAmount);
+        uint256 decreaseStakingAmount = liquidatedAmount;
         uint256 leftAssetAmount = pos.mintAmount.sub(liquidatedAmount);
         uint256 leftCollateralAmount = pos.collateralAmount.sub(returnCollateralAmount);
         if(leftCollateralAmount == 0){
             pos.collateralAmount = 0;
+            decreaseStakingAmount = pos.mintAmount;
             pos.mintAmount = 0;
             pos.closePosition = true;
             removePosition(pos.owner,positionId);
@@ -298,28 +304,33 @@ contract MintSynUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgra
             if(pos.closePosition){
                 shortContract.unlock(positionId);
             }
-            shortContract.decreaseShortToken(pos.asset,liquidatedAmount,pos.owner);
+            shortContract.decreaseShortToken(pos.asset,decreaseStakingAmount,pos.owner);
         }
     }
 
     function setAssetConfig(address _config) external onlyOwner {
+        require(_config != address(0), "zero address");
         assetConfig = IAssetConfig(_config);
     }
 
     function setCollateralConfig(address _config) external onlyOwner {
+        require(_config != address(0), "zero address");
         collateralConfig = ICollateralConfig(_config);
     }
 
     function setCollector(address _collector) external onlyOwner{
+        require(_collector != address(0), "zero address");
         collector = _collector;
     }
 
     function setFee(uint256 _fee) external onlyOwner {
+        require(_fee <= 500,"exceed fee limit");
         feeRate = _fee;
     }
 
-    function setShortContract(IShort _shortContract) external onlyOwner {
-        shortContract = _shortContract;
+    function setShortContract(address _shortContract) external onlyOwner {
+        require(_shortContract != address(0), "zero address");
+        shortContract = IShort(_shortContract);
     }
 
     function pause() external onlyOwner whenNotPaused {

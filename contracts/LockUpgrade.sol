@@ -6,10 +6,9 @@ import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract LockUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgradeable,PausableUpgradeable {
+contract LockUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgradeable {
     using SafeMath for uint256;
     uint256 public duration;
     address public shortContract;
@@ -20,6 +19,7 @@ contract LockUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgradea
         uint256 lockAmount;
         uint256 unLockTime;
         address receiver;
+        bool manuallyUnlocked;
     }
 
     mapping (address => uint256) public countPosition;
@@ -113,12 +113,12 @@ contract LockUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgradea
         uint256 unlockAmount;
         for (uint256 i = 0; i < positionIds.length; i++) {
             require(block.timestamp > lockInfos[positionIds[i]].unLockTime,"no unlock");
+            require(!lockInfos[positionIds[i]].manuallyUnlocked,"already unlocked");
             require(lockInfos[positionIds[i]].receiver == msg.sender , "not owner");
             unlockAmount = unlockAmount.add(lockInfos[positionIds[i]].lockAmount);
             emit UnlockPosition(lockInfos[positionIds[i]].receiver,positionIds[i],lockInfos[positionIds[i]].lockAmount);
             lockInfos[positionIds[i]].lockAmount = 0;
-            removePosition(lockInfos[positionIds[i]].receiver,positionIds[i]);
-            
+            lockInfos[positionIds[i]].manuallyUnlocked = true;
         }
         totalLockBalance = totalLockBalance.sub(unlockAmount);
         IERC20(token).transfer(msg.sender, unlockAmount);
@@ -135,14 +135,6 @@ contract LockUpgrade is Initializable,ReentrancyGuardUpgradeable,OwnableUpgradea
 
     function setShortContract(address _shortContract) external onlyOwner {
         shortContract = _shortContract;
-    }
-
-    function pause() external onlyOwner whenNotPaused {
-        _pause();
-    }
-
-    function unpause() external onlyOwner whenPaused {
-        _unpause();
     }
 
 }
